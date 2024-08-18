@@ -1,0 +1,100 @@
+_schema-version: 3.3.0
+ID: managesalesorder
+description: Manage Sales Orders
+version: 1.0.0
+modules:
+- name: managesalesorder-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: managesalesorder-db
+  - name: managesalesorder-auth
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    readiness-health-check-http-endpoint: /health
+    readiness-health-check-type: http
+  build-parameters:
+    builder: npm
+- name: managesalesorder-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: managesalesorder-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: managesalesorder-app-content
+  type: com.sap.application.content
+  path: .
+  requires:
+  - name: managesalesorder-repo-host
+    parameters:
+      content-target: true
+  build-parameters:
+    build-result: resources
+    requires:
+    - artifacts:
+      - mpoolmanageso.zip
+      name: mpoolmanageso
+      target-path: resources/
+- name: mpoolmanageso
+  type: html5
+  path: app/manageso
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+    - npm install
+    - npm run build:cf
+    supported-platforms: []
+resources:
+- name: managesalesorder-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: managesalesorder-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      tenant-mode: dedicated
+      xsappname: managesalesorder-${org}-${space}
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: managesalesorder-repo-host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-name: managesalesorder-html5-srv
+    service-plan: app-host
+- name: managesalesorder-destination-service
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      HTML5Runtime_enabled: false
+      init_data:
+        instance:
+          destinations:
+          - Authentication: NoAuthentication
+            Name: ui5
+            ProxyType: Internet
+            Type: HTTP
+            URL: https://ui5.sap.com
+          existing_destinations_policy: update
+      version: 1.0.0
+    service: destination
+    service-name: managesalesorder-destination-service
+    service-plan: lite
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production
